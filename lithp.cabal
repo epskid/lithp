@@ -1,0 +1,25 @@
+cabal-version: 3.0
+name:          lithp
+version:       0.1.0.0
+maintainer:    i_am_really_cool@all_times
+author:        epskid
+category:      Language
+build-type:    Simple
+
+executable lithp
+    main-is:            Main.hs
+    hs-source-dirs:     app
+    other-modules:
+        Parse
+        Emit
+        Translators.Common
+        Translators.Assembly
+
+    default-language:   Haskell2010
+    default-extensions: GADTs TupleSections
+    ghc-options:        -Wall
+    build-depends:
+        mtl ^>=2.3.1,
+        containers ^>=0.6.7,
+        base ^>=4.18.3.0,
+        parsec ^>=3.1.16.1
