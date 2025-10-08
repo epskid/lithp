@@ -14,6 +14,7 @@ executable lithp
         Emit
         Translators.Common
         Translators.Assembly
+        Translators.Python
 
     default-language:   Haskell2010
     default-extensions: GADTs TupleSections
