@@ -4,7 +4,12 @@ import Control.Monad.State.Lazy
 import Data.List
 import Parse
 
-data Instruction = LoadNamePush String | PushInt Integer | LoadStringPush Int | Call String deriving (Show)
+data Instruction
+  = PushName String
+  | PushInt Integer
+  | PushString Int
+  | Call Int String
+  deriving (Show)
 
 data Emission = Emission
   { emissionStrtab :: [String],
@@ -22,39 +27,37 @@ emptyEmission =
 type Emitter = State Emission ()
 
 pushInst :: Instruction -> Emission -> Emission
-pushInst inst (Emission s is) =
-  Emission
-    { emissionStrtab = s,
-      emissionInsts = is ++ [inst]
+pushInst inst e@(Emission {emissionInsts = is}) =
+  e
+    { emissionInsts = is ++ [inst]
     }
 
 pushStrtab :: String -> Emission -> Emission
-pushStrtab str (Emission s is) =
-  Emission
-    { emissionStrtab = s ++ [str],
-      emissionInsts = is
+pushStrtab str e@(Emission {emissionStrtab = s}) =
+  e
+    { emissionStrtab = s ++ [str]
     }
 
 literal :: LiteralT -> Emitter
-literal (LiteralAtom (AtomID name)) = modify (pushInst (LoadNamePush name))
+literal (LiteralAtom (AtomID name)) = modify (pushInst (PushName name))
 literal (LiteralInteger int) = modify (pushInst (PushInt int))
 literal (LiteralString str) = do
   strtab <- emissionStrtab <$> get
   case elemIndex str strtab of
-    Just i -> modify (pushInst (LoadStringPush i))
+    Just i -> modify (pushInst (PushString i))
     Nothing -> do
       let i = length strtab
       modify (pushStrtab str)
-      modify (pushInst (LoadStringPush i))
+      modify (pushInst (PushString i))
 
 sexpr :: SExprT -> Emitter
 sexpr (SExprLiteral lit) = literal lit
 sexpr (SExprInner (AtomID op) args) = do
   mapM_ sexpr (reverse args)
-  modify (pushInst (Call op))
+  modify (pushInst (Call (length args) op))
 
 sexprs :: [SExprT] -> Emitter
-sexprs = foldr ((*>) . sexpr) (return ())
+sexprs = mapM_ sexpr
 
 ast :: AST -> Emitter
 ast (ASTSExprs es) = sexprs es
