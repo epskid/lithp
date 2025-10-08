@@ -4,7 +4,7 @@ import Emit
 import Parse
 import System.Environment
 import Translators.Common
-import qualified Translators.Assembly as Assembly
+import Translators.Python
 
 main :: IO ()
 main = do
@@ -15,5 +15,5 @@ main = do
     else do
       parseResult <- parseFile (head args)
       case parseResult of
-        Right ast -> putStrLn <$> translate Assembly.translator $ emit ast
+        Right ast -> putStrLn <$> translate translator $ emit ast
         Left err -> print err

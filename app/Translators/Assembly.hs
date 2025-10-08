@@ -1,5 +1,6 @@
 module Translators.Assembly (translator) where
 
+import Data.Map (Map, fromList, member, (!))
 import Emit
 import Translators.Common
 
@@ -7,7 +8,7 @@ prelude :: String
 prelude =
   "format ELF64\n"
     ++ "public _start\n"
-    ++ "extrn puts\n"
+    ++ "extrn printf\n"
 
 translator :: Translator
 translator =
@@ -27,13 +28,25 @@ strtab tab =
 systemVRegs :: [String]
 systemVRegs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
 
+intrinsics :: Map String String
+intrinsics =
+  fromList
+    [ ("+", "add rdi, rsi\npush rdi"),
+      ("-", "sub rdi, rsi\npush rdi"),
+      ("*", "mov rax, rdi\nimul rsi\npush rax"),
+      ("/", "mov rax, rdi\nidiv rsi\npush rax")
+    ]
+
 inst :: Instruction -> String
-inst (PushName name) = "mov rdi, _lithp_" ++ name ++ "\npush rdi"
-inst (PushInt int) = "mov rdi, " ++ show int ++ "\npush rdi"
-inst (PushString idx) = "mov rdi, _s" ++ show idx ++ "\npush rdi"
-inst (Call argc name) =
-  let loadArgs = [if i < argc then "pop " ++ reg else "xor " ++ reg ++ ", " ++ reg | (reg, i) <- zip systemVRegs [0 ..]]
-   in unlines loadArgs ++ "call " ++ name
+inst (PushName name) = "mov rax, _lithp_" ++ name ++ "\npush rax"
+inst (PushInt int) = "mov rax, " ++ show int ++ "\npush rax"
+inst (PushFloat _) = error "floats are unsupported in assembly"
+inst (PushString idx) = "mov rax, _s" ++ show idx ++ "\npush rax"
+inst (Call argc name)
+  | name `member` intrinsics = intrinsics ! name
+  | otherwise =
+      let loadArgs = [if i < argc then "pop " ++ reg else "xor " ++ reg ++ ", " ++ reg | (reg, i) <- zip systemVRegs [0 ..]]
+       in unlines loadArgs ++ "call " ++ name ++ "\npush rax"
 
 insts :: [Instruction] -> String
 insts is =

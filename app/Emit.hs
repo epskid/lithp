@@ -7,6 +7,7 @@ import Parse
 data Instruction
   = PushName String
   | PushInt Integer
+  | PushFloat Float
   | PushString Int
   | Call Int String
   deriving (Show)
@@ -41,6 +42,7 @@ pushStrtab str e@(Emission {emissionStrtab = s}) =
 literal :: LiteralT -> Emitter
 literal (LiteralAtom (AtomID name)) = modify (pushInst (PushName name))
 literal (LiteralInteger int) = modify (pushInst (PushInt int))
+literal (LiteralFloat fl) = modify (pushInst (PushFloat fl))
 literal (LiteralString str) = do
   strtab <- emissionStrtab <$> get
   case elemIndex str strtab of

@@ -20,7 +20,7 @@ data AtomT where
   AtomID :: String -> AtomT
   deriving (Show)
 
-data LiteralT = LiteralAtom AtomT | LiteralInteger Integer | LiteralString String deriving (Show)
+data LiteralT = LiteralAtom AtomT | LiteralInteger Integer | LiteralFloat Float | LiteralString String deriving (Show)
 
 data SExprT
   = SExprLiteral LiteralT
@@ -38,17 +38,36 @@ ast = do
 
 atom :: Parser AtomT
 atom = do
-  inner <- many (letter <|> oneOf "!@#$%^&*+-=_")
+  inner <- many (letter <|> oneOf "!@#$%^&*+-/=_")
   return $ AtomID inner
+
+plus :: Parser String
+plus = char '+' *> nakedNum
+
+minus :: Parser String
+minus = (:) <$> char '-' <*> nakedNum
+
+nakedNum :: Parser String
+nakedNum = many1 digit
+
+-- https://www.schoolofhaskell.com/user/stevely/parsing-floats-with-parsec
+num :: Parser (Either Integer Float)
+num = do
+  integralPart <- plus <|> minus <|> nakedNum
+  decimalPart <- optionMaybe $ (:) <$> char '.' <*> nakedNum
+  case decimalPart of
+    Just dec -> return $ Right $ read $ integralPart ++ dec
+    Nothing -> return $ Left $ read integralPart
 
 literal :: Parser LiteralT
 literal =
   (LiteralString <$> str)
-    <|> (LiteralInteger <$> int)
+    <|> (intOrFloat <$> num)
     <|> (LiteralAtom <$> atom)
   where
-    int = read <$> many1 digit
     str = char '"' *> many (noneOf "\"") <* char '"'
+    intOrFloat (Left int) = LiteralInteger int
+    intOrFloat (Right fl) = LiteralFloat fl
 
 sexpr :: Parser SExprT
 sexpr = do
