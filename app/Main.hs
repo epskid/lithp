@@ -1,19 +1,53 @@
 module Main (main) where
 
+import Data.List
 import Emit
+import Options.Applicative
 import Parse
-import System.Environment
+import qualified Translators.Assembly as Assembly (translator)
 import Translators.Common
-import Translators.Python
+import qualified Translators.Python as Python (translator)
+
+data TranslatorType = Python | Assembly deriving (Read, Show, Enum, Bounded)
+
+getTranslator :: TranslatorType -> Translator
+getTranslator Python = Python.translator
+getTranslator Assembly = Assembly.translator
+
+data LithpOptions = Options
+  { file :: FilePath,
+    translator :: TranslatorType
+  }
+
+lithpOptions :: Parser LithpOptions
+lithpOptions =
+  Options
+    <$> argument
+      str
+      ( metavar "FILE"
+          <> help "File to translate"
+      )
+    <*> option
+      auto
+      ( long "translator"
+          <> metavar "TRANSLATOR"
+          <> help
+            ( "Translator to use (available: "
+                ++ intercalate ", " (map show [(minBound :: TranslatorType) ..])
+                ++ ")"
+            )
+      )
+
+options :: ParserInfo LithpOptions
+options =
+  info
+    (lithpOptions <**> helper)
+    (fullDesc <> progDesc "transpile lisp files" <> header "lithp - a crappy lisp implementation")
 
 main :: IO ()
 main = do
-  args <- getArgs
-  if length args /= 1
-    then
-      putStrLn "please supply one (1) argument"
-    else do
-      parseResult <- parseFile (head args)
-      case parseResult of
-        Right ast -> putStrLn <$> translate translator $ emit ast
-        Left err -> print err
+  opts <- execParser options
+  result <- parseFile $ file opts
+  case result of
+    Right ast -> putStrLn <$> translate (getTranslator $ translator opts) $ emit ast
+    Left err -> putStr "parse error: " *> print err

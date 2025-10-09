@@ -8,7 +8,6 @@ prelude :: String
 prelude =
   "format ELF64\n"
     ++ "public _start\n"
-    ++ "extrn printf\n"
 
 translator :: Translator
 translator =
