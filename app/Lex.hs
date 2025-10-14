@@ -8,19 +8,13 @@ import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum, isDigit, isSpace)
 import Data.Maybe (maybeToList)
 
-(<:>) :: (Applicative f) => f a -> f [a] -> f [a]
-(<:>) = liftA2 (:)
-
-(<++>) :: (Applicative f) => f [a] -> f [a] -> f [a]
-(<++>) = liftA2 (++)
-
 data Token
   = LParen
   | RParen
   | Quote
-  | String String
-  | Integer Integer
-  | Float Float
+  | StringLiteral String
+  | IntegerLiteral Integer
+  | FloatLiteral Float
   | Symbol String
   deriving (Show)
 
@@ -29,37 +23,33 @@ data LexError
   | UnexpectedEOF
   deriving (Show)
 
-unexpected :: String -> LexError
-unexpected [] = UnexpectedEOF
-unexpected (c : _) = Unexpected c
-
 newtype Lexer a = Lexer
-  { runLexer :: String -> Either LexError (a, String)
+  { runLexer :: String -> Maybe (a, String)
   }
 
 instance Functor Lexer where
   fmap f (Lexer l) = Lexer (fmap (first f) . l)
 
 instance Applicative Lexer where
-  pure x = Lexer (\input -> Right (x, input))
+  pure x = Lexer (\input -> Just (x, input))
   Lexer lF <*> Lexer lA = Lexer $ \input -> do
     (f, rest) <- lF input
     (a, rest') <- lA rest
     return (f a, rest')
 
 instance Alternative Lexer where
-  empty = Lexer (Left . unexpected)
+  empty = Lexer (const Nothing)
   Lexer lA <|> Lexer lB = Lexer $ \input ->
     case (lA input, lB input) of
-      (res, Left _) -> res
-      (Left _, res) -> res
-      (a@(Right (_, restA)), b@(Right (_, restB))) ->
+      (res, Nothing) -> res
+      (Nothing, res) -> res
+      (a@(Just (_, restA)), b@(Just (_, restB))) ->
         if length restA <= length restB then a else b
 
 satisfies :: (Char -> Bool) -> Lexer Char
 satisfies p = Lexer $ \case
-  c : cs | p c -> Right (c, cs)
-  rest -> Left $ unexpected rest
+  c : cs | p c -> Just (c, cs)
+  _ -> Nothing
 
 char :: Char -> Lexer Char
 char c = satisfies (== c)
@@ -74,32 +64,40 @@ syntax =
     <|> (Quote <$ char '\'')
 
 stringLiteral :: Lexer Token
-stringLiteral = String <$> (char '"' *> many (satisfies (/= '"')) <* char '"')
+stringLiteral = StringLiteral <$> (char '"' *> many (satisfies (/= '"')) <* char '"')
 
 numberLiteral :: Lexer Token
-numberLiteral = tokenify <$> (maybeToList <$> optional minus) <++> some (satisfies isDigit <|> char '.')
+numberLiteral = tokenify <$> number
   where
     tokenify :: String -> Token
     tokenify raw =
       if '.' `elem` raw
         then
-          Float $ read raw
-        else Integer $ read raw
+          FloatLiteral $ read raw
+        else IntegerLiteral $ read raw
     minus = char '-'
+    prefix = maybeToList <$> optional minus
+    body = some (satisfies isDigit <|> char '.')
+    number = liftA2 (++) prefix body
 
 literal :: Lexer Token
 literal = stringLiteral <|> numberLiteral
 
 symbol :: Lexer Token
-symbol = Symbol <$> (regularName <|> specialName)
+symbol = Symbol <$> name
   where
     nameBegin = satisfies isAlpha
     nameRest = many $ satisfies isAlphaNum
-    regularName = nameBegin <:> nameRest
+    regularName = liftA2 (:) nameBegin nameRest
     specialName = (: []) <$> satisfies (`elem` ['+', '-', '*', '/'])
+    name = regularName <|> specialName
 
 token :: Lexer Token
-token = whitespace *> (syntax <|> literal <|> symbol) <* whitespace
+token = whitespace *> (syntax <|> symbol <|> literal) <* whitespace
 
-lexer :: String -> Either LexError ([Token], String)
-lexer = runLexer (some token)
+lexer :: String -> Either LexError [Token]
+lexer = transform . runLexer (some token)
+  where
+    transform (Just (tokens, [])) = Right tokens
+    transform (Just (_, ch : _)) = Left $ Unexpected ch
+    transform Nothing = Left UnexpectedEOF
