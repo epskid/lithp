@@ -16,7 +16,7 @@ data Token
   | IntegerLiteral Integer
   | FloatLiteral Float
   | Symbol String
-  deriving (Show)
+  deriving (Show, Eq)
 
 data LexError
   = Unexpected Char
@@ -28,17 +28,17 @@ newtype Lexer a = Lexer
   }
 
 instance Functor Lexer where
-  fmap f (Lexer l) = Lexer (fmap (first f) . l)
+  fmap f (Lexer l) = Lexer $ fmap (first f) . l
 
 instance Applicative Lexer where
-  pure x = Lexer (\input -> Just (x, input))
+  pure x = Lexer $ \input -> Just (x, input)
   Lexer lF <*> Lexer lA = Lexer $ \input -> do
     (f, rest) <- lF input
     (a, rest') <- lA rest
     return (f a, rest')
 
 instance Alternative Lexer where
-  empty = Lexer (const Nothing)
+  empty = Lexer $ const Nothing
   Lexer lA <|> Lexer lB = Lexer $ \input ->
     case (lA input, lB input) of
       (res, Nothing) -> res
@@ -78,7 +78,7 @@ numberLiteral = tokenify <$> number
     minus = char '-'
     prefix = maybeToList <$> optional minus
     body = some (satisfies isDigit <|> char '.')
-    number = liftA2 (++) prefix body
+    number = (++) <$> prefix <*> body
 
 literal :: Lexer Token
 literal = stringLiteral <|> numberLiteral
@@ -88,7 +88,7 @@ symbol = Symbol <$> name
   where
     nameBegin = satisfies isAlpha
     nameRest = many $ satisfies isAlphaNum
-    regularName = liftA2 (:) nameBegin nameRest
+    regularName = (:) <$> nameBegin <*> nameRest
     specialName = (: []) <$> satisfies (`elem` ['+', '-', '*', '/'])
     name = regularName <|> specialName
 
@@ -96,8 +96,7 @@ token :: Lexer Token
 token = whitespace *> (syntax <|> symbol <|> literal) <* whitespace
 
 lexer :: String -> Either LexError [Token]
-lexer = transform . runLexer (some token)
-  where
-    transform (Just (tokens, [])) = Right tokens
-    transform (Just (_, ch : _)) = Left $ Unexpected ch
-    transform Nothing = Left UnexpectedEOF
+lexer input = case runLexer (many token) input of
+  Just (tokens, []) -> Right tokens
+  Just (_, ch : _) -> Left $ Unexpected ch
+  Nothing -> Left UnexpectedEOF
